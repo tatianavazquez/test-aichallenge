@@ -53,7 +53,13 @@ jobs:
 
           echo "$RESPONSE" > response.json
 
-          REVIEW=$(jq -r '.output_text' response.json)
+          REVIEW=$(jq -r '
+           if .output_text then
+            .output_text
+          else
+           .output[] | select(.type=="output_text") | .text
+           end
+          ' response.json)
 
           echo "review<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW" >> $GITHUB_OUTPUT
