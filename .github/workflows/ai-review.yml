@@ -38,7 +38,23 @@ jobs:
           echo "### DIFF BELOW ###" >> prompt.txt
           echo "" >> prompt.txt
           cat diff.txt >> prompt.txt
-          
+      
+      - name: DEBUG - check OPENAI secret in runner
+        run: |
+          echo "OPENAI length: ${#OPENAI_API_KEY}"
+          # comprobar prefijo (no imprime toda la key)
+          echo "OPENAI starts with: ${OPENAI_API_KEY:0:7}"
+          # prueba mínima contra endpoint para ver si responde (no imprime la key)
+          RESPONSE=$(curl -s -o /tmp/openai_models_resp.json -w "%{http_code}" \
+            -H "Authorization: Bearer $OPENAI_API_KEY" \
+            https://api.openai.com/v1/models)
+          echo "HTTP status from /v1/models: $RESPONSE"
+          echo "RAW RESPONSE (first 100 chars):"
+          head -c 200 /tmp/openai_models_resp.json || true
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+
       - name: Call OpenAI API safely
         id: ai
         run: |
