@@ -39,26 +39,11 @@ jobs:
           echo "" >> prompt.txt
           cat diff.txt >> prompt.txt
       
-      - name: DEBUG - check OPENAI secret in runner
-        run: |
-          echo "OPENAI length: ${#OPENAI_API_KEY}"
-          # comprobar prefijo (no imprime toda la key)
-          echo "OPENAI starts with: ${OPENAI_API_KEY:0:7}"
-          # prueba mínima contra endpoint para ver si responde (no imprime la key)
-          RESPONSE=$(curl -s -o /tmp/openai_models_resp.json -w "%{http_code}" \
-            -H "Authorization: Bearer $OPENAI_API_KEY" \
-            https://api.openai.com/v1/models)
-          echo "HTTP status from /v1/models: $RESPONSE"
-          echo "RAW RESPONSE (first 100 chars):"
-          head -c 200 /tmp/openai_models_resp.json || true
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-
-      - name: Call OpenAI API safely
+  
+      - name: Call OpenAI Responses API (project-key friendly)
         id: ai
         run: |
-          echo "===== BUILDING PROMPT ====="
+          # abort early if no prompt
           if [ ! -s prompt.txt ]; then
             echo "review<<EOF" >> $GITHUB_OUTPUT
             echo "⚠️ No hubo diff para analizar." >> $GITHUB_OUTPUT
@@ -66,40 +51,38 @@ jobs:
             exit 0
           fi
 
-          DIFF=$(jq -Rs . < prompt.txt)
+          CLEANED_INPUT=$(jq -Rs . < prompt.txt)
 
           REQUEST_DATA=$(jq -n \
             --arg model "gpt-4.1-mini" \
-            --arg diff "$DIFF" \
+            --arg input "$CLEANED_INPUT" \
             '{
               model: $model,
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a senior tech lead. Provide a concise, structured, useful code review. Never return null."
-                },
-                {
-                  role: "user",
-                  content: ("Please review this code diff and provide issues, risks, bugs, missing edge cases, and improvements:\n\n" + $diff)
-                }
-              ]
+              input: $input
             }'
           )
 
-          curl -s \
-            -H "Content-Type: application/json" \
+          # call Responses API (newer endpoint)
+          curl -s -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OPENAI_API_KEY" \
             -d "$REQUEST_DATA" \
-            https://api.openai.com/v1/chat/completions \
+            https://api.openai.com/v1/responses \
             > response.json
 
           echo "===== RAW OPENAI RESPONSE ====="
           cat response.json
 
-          REVIEW=$(jq -r '.choices[0].message.content // empty' response.json)
+          # try common output locations (output_text or output[].text)
+          REVIEW=$(jq -r '
+            if .output_text then
+              .output_text
+            else
+              (.output[]? | select(.type=="output_text") | .text) // (.output[]? | .text) // empty
+            end
+          ' response.json)
 
           if [ -z "$REVIEW" ]; then
-            REVIEW="⚠️ La IA no devolvió contenido (respuesta vacía)."
+            REVIEW="⚠️ La IA no devolvió contenido (respuesta vacía o en formato inesperado)."
           fi
 
           echo "review<<EOF" >> $GITHUB_OUTPUT
