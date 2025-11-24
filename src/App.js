@@ -12,6 +12,9 @@ function App() {
        <div>
         This is an example.
        </div>
+       <footer className="App-footer">
+         <p>Footer content goes here</p>
+       </footer>
       </header>
     </div>
   );
