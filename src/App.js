@@ -10,7 +10,7 @@ function App() {
           revi
         </p>
        <div>
-        This is an example. HOLA mmm
+        This is an example.
        </div>
        <footer className="App-footer">
          <p>Footer content goes here j</p>
