@@ -13,7 +13,7 @@ function App() {
         This is an example.
        </div>
        <footer className="App-footer">
-         <p>Footer content goes here</p>
+         <p>Footer content goes here j</p>
        </footer>
       </header>
     </div>
