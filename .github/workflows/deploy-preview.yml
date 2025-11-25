@@ -8,7 +8,6 @@ jobs:
   deploy-and-notify:
     runs-on: ubuntu-latest
     
-    # Give this job permissions to read comments, which is needed for the 'Get AI Summary' step
     permissions:
       pull-requests: read
       contents: read
@@ -42,92 +41,88 @@ jobs:
       
       # --- NEW AI & TELEGRAM STEPS ---
       
-      # 1. Wait for AI Review Completion (Crucial for timing!)
-      # The AI App runs asynchronously. We pause to let it post its review comment.
-  #     - name: Wait for AI Review to Post
-  #       run: |
-  #         echo "Waiting 45 seconds for AI Review to complete and post its comment..."
-  #         sleep 45s # Adjust this time if needed, but 45s is a safe starting point
-
-  #     # 2. Install GitHub CLI and Extract AI Summary from PR Comments
-  #     # We use the GitHub CLI tool to read the comment the AI bot just posted.
-  #    # 2. Get AI Summary from PR Comment (Extracts CONCISE Telegram Summary)
-  # # 2. Get AI Summary from PR Comment (ROBUST POLLING & EXTRACTION)
-  #     - name: Get AI Summary from PR Comment
-  #       id: get_summary
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  #       run: |
-  #         # Use the correct full bot username.
-  #         AI_BOT_USERNAME="coderabbitai" 
-  #         PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-  #         MAX_ATTEMPTS=18 # Poll for up to 3 minutes (18 * 10 seconds)
-  #         SLEEP_TIME=10
+      # 1. Get AI Summary from PR Comment (ROBUST POLLING WITH DEBUG)
+      - name: Get AI Summary from PR Comment
+        id: get_summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          AI_BOT_USERNAME="coderabbitai[bot]" 
+          PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
+          MAX_ATTEMPTS=18 # Poll for up to 3 minutes
+          SLEEP_TIME=10
           
-  #         FULL_COMMENT=""
+          FULL_COMMENT=""
           
-  #         # Start the Polling Loop
-  #         for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
-  #           echo "Attempt $i/$MAX_ATTEMPTS: Checking for comment from $AI_BOT_USERNAME..."
+          # Start the Polling Loop
+          for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking for final content..."
             
-  #           # 1. Fetch the full body of the latest comment from the AI bot
-  #           FULL_COMMENT=$(gh pr view $PULL_REQUEST_NUMBER --json comments \
-  #             | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' \
-  #             | head -n 1)
+            set -o pipefail
+            
+            # Fetch the body safely 
+            FULL_COMMENT=$(gh pr view $PULL_REQUEST_NUMBER --json comments 2>/dev/null \
+              | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null \
+              | head -n 1)
+              
+            set +o pipefail
 
-  #           # Check if the comment was successfully fetched and has content
-  #           if [[ -n "$FULL_COMMENT" && "$FULL_COMMENT" != "null" ]]; then
-  #             echo "Comment found after $i attempts."
-  #             break # Exit the loop
-  #           fi
-            
-  #           if [[ $i -eq $MAX_ATTEMPTS ]]; then
-  #             echo "Timeout: Comment not found after 3 minutes."
-  #             break
-  #           fi
-            
-  #           sleep $SLEEP_TIME
-  #         done
+            # --- DEBUG LINE ADDED HERE ---
+            echo "::debug::Content fetched in attempt $i:"
+            echo "$FULL_COMMENT"
+            # -----------------------------
 
-  #         # 2. Extract the concise summary (if the comment was found)
-  #         if [[ -n "$FULL_COMMENT" && "$FULL_COMMENT" != "null" ]]; then
-  #           # Use AWK to extract content between the 'Summary' and 'Detailed Code Review' sections
-  #           SUMMARY=$(echo "$FULL_COMMENT" | awk '
-  #             /## 🐇 Summary/{print; summary=1; next}
-  #             /## 🔍 Detailed Code Review/ || /---/{summary=0; next}
-  #             summary==1{print}
-  #           ' | sed 's/## 🐇 Summary//g' | sed '/^$/d') # Clean up the header and empty lines
+            # Crucial check: Has CodeRabbit finished and posted the summary?
+            if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
+              echo "Final CodeRabbit Summary found after $i attempts."
+              break # Exit the loop
+            fi
             
-  #           # Fallback if AWK extraction fails
-  #           if [[ -z "$SUMMARY" ]]; then
-  #             SUMMARY="[Concise summary extraction failed. See the PR on GitHub for the full review.]"
-  #           fi
-  #         else
-  #           # Fallback if the comment was never found after timeout
-  #           SUMMARY="[AI Review not available on GitHub. Check CodeRabbit configuration.]"
-  #         fi
+            if [[ $i -eq $MAX_ATTEMPTS ]]; then
+              echo "Timeout: Final CodeRabbit comment content not found after 3 minutes."
+              break
+            fi
+            
+            sleep $SLEEP_TIME
+          done
 
-  #         # 3. Prepare multi-line output for the Telegram action
-  #         echo "summary<<EOF" >> $GITHUB_OUTPUT
-  #         echo "$SUMMARY" >> $GITHUB_OUTPUT
-  #         echo "EOF" >> $GITHUB_OUTPUT
-      
-  #     # 3. Send Consolidated Telegram Notification
-  #     - name: Send Consolidated Telegram Message
-        # uses: appleboy/telegram-action@master # A reliable marketplace action
-        # with:
-        #   to: ${{ secrets.TELEGRAM_CHAT_ID }}
-        #   token: ${{ secrets.TELEGRAM_TOKEN }}
-        #   message: |
-        #     🔔 *New PR for Review: ${{ github.event.pull_request.title }}*
+          # 2. Extract the concise summary
+          if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
+            # AWK extraction logic remains the same (isolates the short summary)
+            SUMMARY=$(echo "$FULL_COMMENT" | awk '
+              /## 🐇 Summary/{print; summary=1; next}
+              /## 🔍 Detailed Code Review/ || /---/{summary=0; next}
+              summary==1{print}
+            ' | sed 's/## 🐇 Summary//g' | sed '/^$/d')
+
+            if [[ -z "$SUMMARY" ]]; then
+              SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
+            fi
+          else
+            SUMMARY="[AI Review not complete within timeout. Check the PR on GitHub.]"
+          fi
+
+          # 3. Prepare multi-line output for the Telegram action
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+      # 4. Send Consolidated Telegram Notification
+      - name: Send Consolidated Telegram Message
+        uses: appleboy/telegram-action@master # A reliable marketplace action
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            🔔 *New PR for Review: ${{ github.event.pull_request.title }}*
             
-        #     **By:** @${{ github.event.pull_request.user.login }}
+            **By:** @${{ github.event.pull_request.user.login }}
             
-        #     🚀 *Live Preview:* [Click to Test](${{ steps.deploy.outputs.preview-url }})
+            🚀 *Live Preview:* [Click to Test](${{ steps.deploy.outputs.preview-url }})
             
-        #     🤖 *AI Code Review Summary:*
-        #     ${{ steps.get_summary.outputs.summary }}
+            🤖 *AI Code Review Summary:*
+            ${{ steps.get_summary.outputs.summary }}
             
-        #     [Link to GitHub PR](${{ github.event.pull_request.html_url }})
-        #   parse_mode: markdown
-        #   disable_web_page_preview: true # Keeps the message clean
+            [Link to GitHub PR](${{ github.event.pull_request.html_url }})
+          parse_mode: markdown
+          disable_web_page_preview: true # Keeps the message clean
