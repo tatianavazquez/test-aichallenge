@@ -40,7 +40,12 @@ jobs:
       # --- END EXISTING VERCEL STEPS ---
       
       # --- NEW AI & TELEGRAM STEPS ---
-      
+      # 1. NEW: Ensure GitHub CLI is Installed
+      # This fixes "command not found" errors for 'gh'
+      - name: Install GitHub CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install gh -y
       # 1. Get AI Summary from PR Comment (ROBUST POLLING WITH DEBUG)
       - name: Get AI Summary from PR Comment
         id: get_summary
