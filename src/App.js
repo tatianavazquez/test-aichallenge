@@ -9,7 +9,7 @@ function App() {
         <p>
           AVISAAAA ??
         </p>
-     <p>trying</p>
+     <p style="color: red;">trying</p>
       </header>
     </div>
   );
