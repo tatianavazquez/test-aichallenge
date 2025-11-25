@@ -63,48 +63,42 @@ jobs:
           echo "Targeting PR Author: $AI_BOT_USERNAME"
           echo "-----------------------------------------------------"
           
-          # --- DEBUG BEFORE LOOP: CHECK INITIAL STATE (Unedited) ---
-          # Run the fetch command once to see the comment's initial state
-          RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
-          INITIAL_COMMENT_BODY=$(echo "$RAW_JSON_OUTPUT" \
-            | jq -r '.comments[] 
-                | select(.author.login == "'"$AI_BOT_USERNAME"'") 
-                | sort_by(.createdAt) 
-                | .[0].body' 2>/dev/null)
-
-          echo "::debug::INITIAL COMMENT STATE (Before Polling Starts):"
-          echo "$INITIAL_COMMENT_BODY"
-          echo "------------------------------------------------------"
-          # --------------------------------------------------------
-
+          # We skip the "INITIAL_COMMENT_BODY" check because it relies on the same logic that is failing.
+          # We proceed directly to the loop with the fix.
+          
           # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
             echo "Attempt $i/$MAX_ATTEMPTS: Checking for bot edit..."
             
             set -o pipefail
             
-            # Fetch the raw JSON output containing all comments (re-fetch to get latest API data)
+            # Fetch the raw JSON output containing all comments
             RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
             
-            # CRITICAL: Fetch the body of the FIRST comment by the author
+            # CRITICAL FIX: Use a robust JQ query to filter for the first comment by the author.
+            # This query ensures the filtering happens correctly:
             FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" \
-              | jq -r '.comments[] 
-                  | select(.author.login == "'"$AI_BOT_USERNAME"'") 
+              | jq -r '[.comments[] 
+                  | select(.author.login == "'"$AI_BOT_USERNAME"'")] 
                   | sort_by(.createdAt) 
                   | .[0].body' 2>/dev/null)
               
             set +o pipefail
 
             # --- DEBUG: Show the current state during polling ---
-            # When the bot edits it, this is what changes
             echo "::debug::CURRENT COMMENT STATE AT ATTEMPT $i (Expecting edit):"
-            echo "$FULL_COMMENT"
+            # Print a placeholder if the content is empty, to confirm the script ran.
+            if [[ -z "$FULL_COMMENT" ]]; then
+              echo "[Content empty: Author may not have posted the initial comment yet, or JQ failed.]"
+            else
+              echo "$FULL_COMMENT"
+            fi
             echo "------------------------------------------------"
 
             # Crucial check: Has the bot finished updating the comment with the Summary?
             if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
-              echo "SUCCESS: Bot edit found! Content confirmed after $i attempts."
-              # --- DEBUG: Explicitly show the final, edited content before extraction ---
+              echo "SUCCESS: Bot edit found, proceeding to extraction after $i attempts."
+              # FINAL DEBUG: Explicitly show the final, edited content before extraction
               echo "::debug::FINAL EDITED COMMENT CONTENT:"
               echo "$FULL_COMMENT"
               break # Exit the loop
@@ -121,11 +115,10 @@ jobs:
           echo "--- DEBUG END: Starting Extraction ---"
 
           # 2. Extract the concise summary using SED
+          # ... (Extraction logic remains the same)
           if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
-            # Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
             SUMMARY=$(echo "$FULL_COMMENT" | sed '1,/Summary by CodeRabbit/d')
             
-            # Cleanup for safety
             if [[ -z "$SUMMARY" ]]; then
               SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
             fi
