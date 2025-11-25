@@ -52,7 +52,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-         run: |
           # --- SAFELY DEFINED VARIABLES ---
           AI_BOT_USERNAME="coderabbitai[bot]" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
