@@ -23,8 +23,9 @@ jobs:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          # Important: Specify that it's NOT a production deploy
           vercel-args: '--prod=false' 
-        id: deploy
+        id: deploy # Keep this ID for the Telegram step to reference the URL
       # --- END VERCEL URL RETRIEVAL ---
       
       # --- NEW AI & TELEGRAM STEPS ---
@@ -34,92 +35,79 @@ jobs:
           sudo apt-get update
           sudo apt-get install gh -y
           
-      # 2. STAGE 1: Wait for CodeRabbit Status Comment to Finish 
-      - name: Wait for Review Completion
-        id: wait_for_review
+      # 2. Poll PR Body for Final AI Summary (Consolidated and Robust Logic)
+      - name: Wait and Get Final AI Summary
+        id: get_summary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          # Use the format that matches your organization/repo setting
-          AI_BOT_USERNAME="coderabbitai" 
-          MAX_ATTEMPTS=60
-          SLEEP_TIME=10
-          
-          echo "--- STAGE 1: POLLING BOT STATUS COMMENT ---"
-          echo "Targeting Bot Username: $AI_BOT_USERNAME"
+          MAX_ATTEMPTS=60 
+          SLEEP_TIME=5 # Polling every 5 seconds for 5 minutes max
+          FULL_BODY=""
+          OLD_SUMMARY_MARKER="SUMMARY_BY_CODE_RABBIT_MARKER"
 
+          echo "--- DEBUG START: POLLING PR DESCRIPTION FOR FINAL EDIT ---"
+          echo "PR Number: $PULL_REQUEST_NUMBER"
+          echo "----------------------------------------------------------"
+
+          # 1. Capture the current (old) PR description body hash before CodeRabbit updates it.
+          # This helps distinguish between an *old* complete summary and the *new* complete summary.
+          RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
+          if echo "$RAW_BODY_OUTPUT" | grep -q "Summary by CodeRabbit"; then
+            # Create a hash of the initial summary content
+            OLD_SUMMARY_MARKER=$(echo "$RAW_BODY_OUTPUT" | md5sum | awk '{print $1}')
+            echo "::debug::Initial PR body hash: $OLD_SUMMARY_MARKER"
+          fi
+
+          # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
-            echo "Attempt $i/$MAX_ATTEMPTS: Checking bot status comment..."
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking PR body for final completion marker..."
             
             set -o pipefail
             
-            # Fetch the raw JSON output containing all comments
-            RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
-
-            # --- CRITICAL DEBUG: Print the raw JSON output ---
-            echo "::debug::RAW JSON OUTPUT at attempt $i:"
-            echo "$RAW_JSON_OUTPUT"
-            
-            # CRITICAL FIX: Simplify JQ to just filter and extract, avoiding complex piping issues.
-            # We use a single, reliable JQ script to find the latest comment body from the bot.
-            BOT_COMMENT_BODY=$(echo "$RAW_JSON_OUTPUT" \
-              | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null \
-              | head -n 1)
+            # Fetch the current PR body content
+            RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
+            FULL_BODY=$(echo "$RAW_BODY_OUTPUT" | jq -r '.body')
               
             set +o pipefail
             
-            # --- DEBUG: Show the RAW HTML/Markdown content ---
-            echo "::debug::BOT COMMENT BODY after JQ filter:"
-            echo "$BOT_COMMENT_BODY"
+            # Hash the current body content to detect a change
+            CURRENT_SUMMARY_MARKER=$(echo "$FULL_BODY" | md5sum | awk '{print $1}')
+
+            # --- DEBUG: Show the current state during polling ---
+            echo "::debug::CURRENT PR BODY HASH at ATTEMPT $i: $CURRENT_SUMMARY_MARKER"
+            echo "------------------------------------------------"
             
-           # CRITICAL CHECK: Does the comment still contain the "review in progress" marker?
-            # We wait UNTIL this marker disappears.
-            if echo "$BOT_COMMENT_BODY" | grep -q "review in progress by coderabbit.ai"; then
-              echo "Status: 'Review in progress' tag found. Waiting..."
-            else
-              echo "SUCCESS: 'Review in progress' tag is gone. Assuming review is complete."
+            # CRITICAL FIX: Break only when 1) the final tag is present AND 2) the content has changed (new review).
+            if echo "$FULL_BODY" | grep -q ""; then
+                if [[ "$CURRENT_SUMMARY_MARKER" != "$OLD_SUMMARY_MARKER" ]]; then
+                    echo "SUCCESS: Final completion marker found AND content has changed. Review is complete after $i attempts."
+                    echo "::debug::FINAL EDITED PR BODY CONTENT:"
+                    echo "$FULL_BODY"
+                    break # Exit the loop
+                else
+                    echo "Status: Marker found, but content is unchanged since workflow start. Waiting for bot edit..."
+                fi
+            fi
+            
+            if [[ $i -eq $MAX_ATTEMPTS ]]; then
+              echo "Timeout: Final Summary completion marker not found after 5 minutes."
               break
             fi
             
             sleep $SLEEP_TIME
           done
 
-      # 3. STAGE 2: Get Final Summary from PR Description (Single Fetch)
-      - name: Get Final Summary from PR Description
-        id: get_summary
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # This step runs once, knowing the data is ready from Stage 1
-        run: |
-          PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          FULL_BODY=""
-          
-          echo "--- STAGE 2: FETCHING FINAL SUMMARY (Non-Polling) ---"
-
-          # Fetch the PR body content once
-          RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
-          FULL_BODY=$(echo "$RAW_BODY_OUTPUT" | jq -r '.body')
+          echo "--- DEBUG END: Starting Extraction ---"
 
           # 2. Extract the concise summary using SED
           if echo "$FULL_BODY" | grep -q "Summary by CodeRabbit"; then
             # 1. Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
             SUMMARY=$(echo "$FULL_BODY" | sed '1,/Summary by CodeRabbit/d')
             
-            # 2. CRITICAL CLEANUP: Remove the promotional/tip lines and the end comment tag.
-            SUMMARY=$(echo "$SUMMARY" | sed '/<sub>/d' | sed '/<!-- end of auto-generated comment:/d')
-
-            if [[ -z "$SUMMARY" ]]; then
-              SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
-            fi
-          else
-            SUMMARY="[AI Summary marker not found in description. Review likely failed.]"
-          fi
-
-          # 3. Prepare multi-line output
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          echo "$SUMMARY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            # 2. CLEANUP: Remove the promotional/tip lines and the end comment tag.
+            SUMMARY=$(echo "$SUMMARY" | sed '/<sub>/d' | sed '/
       
       # 4. Send Consolidated Telegram Notification
       - name: Send Consolidated Telegram Message
