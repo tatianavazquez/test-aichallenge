@@ -47,9 +47,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          AI_BOT_USERNAME="coderabbitai[bot]" 
+          AI_BOT_USERNAME="coderabbitai" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          MAX_ATTEMPTS=18 # Poll for up to 3 minutes
+          MAX_ATTEMPTS=60 # Poll for up to 10 minutes
           SLEEP_TIME=10
           
           FULL_COMMENT=""
@@ -86,21 +86,24 @@ jobs:
             sleep $SLEEP_TIME
           done
 
+          # ... (Polling Loop remains the same, assuming it successfully fetches the final FULL_COMMENT)
+          
           # 2. Extract the concise summary
-          if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
+             if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
             # AWK extraction logic remains the same (isolates the short summary)
             SUMMARY=$(echo "$FULL_COMMENT" | awk '
+              # Start printing after the "Summary" header is found
               /## 🐇 Summary/{print; summary=1; next}
-              /## 🔍 Detailed Code Review/ || /---/{summary=0; next}
+              # Stop printing when the horizontal rule (---) is found
+              /---/{summary=0; next}
+              # Print lines only when the flag is set
               summary==1{print}
             ' | sed 's/## 🐇 Summary//g' | sed '/^$/d')
 
             if [[ -z "$SUMMARY" ]]; then
-              SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
+              SUMMARY="[Concise summary extraction failed, but full review is on the PR. Check the AWK script against the PR comment source.]"
             fi
-          else
-            SUMMARY="[AI Review not complete within timeout. Check the PR on GitHub.]"
-          fi
+          # ... (rest of the script)
 
           # 3. Prepare multi-line output for the Telegram action
           echo "summary<<EOF" >> $GITHUB_OUTPUT
