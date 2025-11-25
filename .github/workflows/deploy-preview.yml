@@ -16,28 +16,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- EXISTING VERCEL STEPS ---
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      # --- VERCEL URL RETRIEVAL (No redundant build/install) ---
+      # Vercel's integration handles the build/deploy. This step
+      # just calls the Vercel action to retrieve the URL output.
+      - name: Get Deploy Preview URL
+        uses: amondnet/vercel-action@v20
         with:
-          node-version: 18
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build project
-        run: npm run build
-
-      # - name: Deploy to Vercel
-      #   uses: amondnet/vercel-action@v20
-      #   with:
-      #     vercel-token: ${{ secrets.VERCEL_TOKEN }}
-      #     vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-      #     vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-      #     working-directory: .
-      #     vercel-args: '--prod=false'
-      #   id: deploy
-      # --- END EXISTING VERCEL STEPS ---
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          # Important: Specify that it's NOT a production deploy
+          vercel-args: '--prod=false' 
+        id: deploy # Keep this ID for the Telegram step to reference the URL
+      # --- END VERCEL URL RETRIEVAL ---
       
       # --- NEW AI & TELEGRAM STEPS ---
       # 1. NEW: Ensure GitHub CLI is Installed
@@ -54,7 +45,7 @@ jobs:
         run: |
           # --- SAFELY DEFINED VARIABLES ---
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          MAX_ATTEMPTS=60 # 10 minutes max wait
+          MAX_ATTEMPTS=60
           SLEEP_TIME=10
           FULL_BODY=""
 
@@ -63,14 +54,12 @@ jobs:
           echo "-----------------------------------------------------"
 
           # --- DEBUG BEFORE LOOP: CHECK INITIAL STATE (Unedited) ---
-          # Fetch the PR body content once to establish the baseline.
           RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
           INITIAL_BODY=$(echo "$RAW_BODY_OUTPUT" | jq -r '.body')
 
           echo "::debug::INITIAL PR DESCRIPTION STATE (Before Polling Starts):"
           echo "$INITIAL_BODY"
           echo "------------------------------------------------------"
-          # --------------------------------------------------------
 
           # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
@@ -78,7 +67,6 @@ jobs:
             
             set -o pipefail
             
-            # Fetch the PR body content using the --json body flag (re-fetch for update)
             RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
             FULL_BODY=$(echo "$RAW_BODY_OUTPUT" | jq -r '.body')
               
@@ -96,7 +84,6 @@ jobs:
             # Crucial check: Has the bot finished updating the body with the Summary?
             if echo "$FULL_BODY" | grep -q "Summary by CodeRabbit"; then
               echo "SUCCESS: Bot edit found in PR body, proceeding to extraction after $i attempts."
-              # --- DEBUG: Explicitly show the final, edited content before extraction ---
               echo "::debug::FINAL EDITED PR BODY CONTENT:"
               echo "$FULL_BODY"
               break # Exit the loop
@@ -114,21 +101,11 @@ jobs:
 
           # 2. Extract the concise summary using SED
           if echo "$FULL_BODY" | grep -q "Summary by CodeRabbit"; then
-            # Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
+            # 1. Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
             SUMMARY=$(echo "$FULL_BODY" | sed '1,/Summary by CodeRabbit/d')
             
-            # Cleanup for safety
-            if [[ -z "$SUMMARY" ]]; then
-              SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
-            fi
-          else
-            SUMMARY="[AI Review not complete within timeout. Check the PR description on GitHub.]"
-          fi
-
-          # 3. Prepare multi-line output
-          echo "summary<<EOF" >> $GITHUB_OUTPUT
-          echo "$SUMMARY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            # 2. CRITICAL CLEANUP: Remove the promotional/tip lines.
+            SUMMARY=$(echo "$SUMMARY" | sed '/<sub>/d' | sed '/
       
       # 4. Send Consolidated Telegram Notification
       - name: Send Consolidated Telegram Message
