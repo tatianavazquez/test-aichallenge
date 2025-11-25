@@ -46,21 +46,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install gh -y
-      # 1. Get AI Summary from PR Comment (ROBUST POLLING WITH DEBUG)
+      # 2. Poll PR Comments for AI Summary
       - name: Get AI Summary from PR Comment
         id: get_summary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # --- SAFELY DEFINED VARIABLES ---
-          AI_BOT_USERNAME="coderabbitai" 
+          # CRITICAL FIX: Dynamically set the target username to the PR author's login.
+          # The bot edits this user's comment, so we target the author.
+          AI_BOT_USERNAME="${{ github.event.pull_request.user.login }}" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
           MAX_ATTEMPTS=60
           SLEEP_TIME=10
           FULL_COMMENT=""
 
           echo "--- DEBUG START ---"
-          echo "Username being sought: $AI_BOT_USERNAME"
+          echo "Targeting PR Author for summary: $AI_BOT_USERNAME"
           echo "PR Number: $PULL_REQUEST_NUMBER"
           echo "-------------------"
 
@@ -70,50 +72,34 @@ jobs:
             
             set -o pipefail
             
-            # --- DEBUG: FETCH ALL COMMENTS FOR THE BOT ---
+            # Fetch the body of the latest comment authored by the PR user
             RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
             
-            # Use JQ to find and print ALL comments made by the specific bot
-            BOT_COMMENTS=$(echo "$RAW_JSON_OUTPUT" | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body')
-            
-            echo "::debug::Total comments found from $AI_BOT_USERNAME (in all attempts):"
-            echo "$BOT_COMMENTS"
-
-            # Fetch the body of the latest comment
+            # Use JQ to find the latest comment body from the PR author
             FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null | head -n 1)
               
             set +o pipefail
 
-            # --- DEBUG: PRINT THE LATEST COMMENT CONTENT ---
-            echo "::debug::LATEST comment content being evaluated:"
-            echo "$FULL_COMMENT"
-            echo "-------------------"
-
-            # Crucial check: Has CodeRabbit finished and posted the summary?
-            if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
-              echo "SUCCESS: Final CodeRabbit Summary found after $i attempts."
+            # Crucial check: Has the bot finished updating the comment with the Summary?
+            if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
+              echo "SUCCESS: Concise Summary found after $i attempts."
               break # Exit the loop
             fi
             
             if [[ $i -eq $MAX_ATTEMPTS ]]; then
-              echo "Timeout: Final CodeRabbit comment content not found after 10 minutes."
+              echo "Timeout: Final Summary not found after 10 minutes."
               break
             fi
             
             sleep $SLEEP_TIME
           done
 
-          echo "--- DEBUG END: Starting Extraction ---"
-
-          # 2. Extract the concise summary
-          if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
-            # AWK extraction logic remains the same (isolates the short summary)
-            SUMMARY=$(echo "$FULL_COMMENT" | awk '
-              /## 🐇 Summary/{print; summary=1; next}
-              /## 🔍 Detailed Code Review/ || /---/{summary=0; next}
-              summary==1{print}
-            ' | sed 's/## 🐇 Summary//g' | sed '/^$/d')
-
+          # 2. Extract the concise summary using SED
+          if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
+            # Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
+            SUMMARY=$(echo "$FULL_COMMENT" | sed '1,/Summary by CodeRabbit/d')
+            
+            # Cleanup for safety
             if [[ -z "$SUMMARY" ]]; then
               SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
             fi
@@ -125,7 +111,6 @@ jobs:
           echo "summary<<EOF" >> $GITHUB_OUTPUT
           echo "$SUMMARY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
       # 4. Send Consolidated Telegram Notification
       - name: Send Consolidated Telegram Message
         uses: appleboy/telegram-action@master # A reliable marketplace action
