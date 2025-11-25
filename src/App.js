@@ -7,7 +7,9 @@ function App() {
     { id: 3, name: "Charlie", role: "QA", points: 76 },
     { id: 4, name: "Diana", role: "Manager", points: 88 },
     { id: 5, name: "Eve", role: "DevOps", points: 90 },
-    { id: 6, name: "Frank", role: "Intern", points: 60 }
+    { id: 6, name: "Frank", role: "Intern", points: 60 },
+    { id: 7, name: "Gina", role: "PM", points: 84 },
+    { id: 8, name: "Henry", role: "Tech Lead", points: 95 }
   ];
 
   const [query, setQuery] = useState("");
@@ -16,7 +18,7 @@ function App() {
 
   // pagination
   const [page, setPage] = useState(1);
-  const pageSize = 3; // items per page
+  const pageSize = 3;
 
   // Filter
   const filtered = initialData.filter((item) =>
@@ -49,8 +51,7 @@ function App() {
     }
   };
 
-  const nextPage = () => setPage((p) => Math.min(p + 1, totalPages));
-  const prevPage = () => setPage((p) => Math.max(p - 1, 1));
+  const goToPage = (num) => setPage(num);
 
   return (
     <div style={{ padding: 24, fontFamily: "sans-serif" }}>
@@ -63,7 +64,7 @@ function App() {
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
-          setPage(1); // reset page when searching
+          setPage(1);
         }}
         style={{
           padding: 8,
@@ -100,23 +101,21 @@ function App() {
         </tbody>
       </table>
 
-      {/* Pagination Controls */}
-      <div style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>
-        <button
-          onClick={prevPage}
-          disabled={page === 1}
-          style={btn}
-        >
-          Previous
-        </button>
-        <span>Page {page} of {totalPages}</span>
-        <button
-          onClick={nextPage}
-          disabled={page === totalPages}
-          style={btn}
-        >
-          Next
-        </button>
+      {/* Pagination Numbers */}
+      <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+        {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
+          <button
+            key={num}
+            onClick={() => goToPage(num)}
+            style={{
+              ...btn,
+              background: num === page ? "#d0e3ff" : "#f5f5f5",
+              fontWeight: num === page ? "bold" : "normal",
+            }}
+          >
+            {num}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -140,7 +139,6 @@ const btn = {
   border: "1px solid #aaa",
   borderRadius: 4,
   cursor: "pointer",
-  background: "#f5f5f5"
 };
 
 export default App;
