@@ -53,46 +53,57 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # --- SAFELY DEFINED VARIABLES ---
-          # CRITICAL FIX: Dynamically set the target username to the PR author's login.
-          # The bot edits this user's comment, so we target the author.
           AI_BOT_USERNAME="${{ github.event.pull_request.user.login }}" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
           MAX_ATTEMPTS=60
           SLEEP_TIME=10
           FULL_COMMENT=""
 
-          echo "--- DEBUG START ---"
-          echo "Targeting PR Author for summary: $AI_BOT_USERNAME"
-          echo "PR Number: $PULL_REQUEST_NUMBER"
-          echo "-------------------"
+          echo "--- DEBUG START: TARGETING FIRST COMMENT BY AUTHOR ---"
+          echo "Targeting PR Author: $AI_BOT_USERNAME"
+          echo "-----------------------------------------------------"
 
           # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
-            echo "Attempt $i/$MAX_ATTEMPTS: Checking for final content..."
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking for bot edit..."
             
             set -o pipefail
             
-            # Fetch the body of the latest comment authored by the PR user
+            # Fetch the raw JSON output containing all comments
             RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
             
-            # Use JQ to find the latest comment body from the PR author
-            FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null | head -n 1)
+            # CRITICAL: Use JQ to filter by author, sort by 'createdAt', and take the body of the FIRST comment.
+            FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" \
+              | jq -r '.comments[] 
+                  | select(.author.login == "'"$AI_BOT_USERNAME"'") 
+                  | sort_by(.createdAt) 
+                  | .[0].body' 2>/dev/null)
               
             set +o pipefail
 
+            # --- DEBUG: Show the current state of the first comment ---
+            echo "::debug::FIRST COMMENT CONTENT AT ATTEMPT $i:"
+            echo "$FULL_COMMENT"
+            echo "------------------------------------------------"
+
             # Crucial check: Has the bot finished updating the comment with the Summary?
             if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
-              echo "SUCCESS: Concise Summary found after $i attempts."
+              echo "SUCCESS: Bot edit found! Content confirmed after $i attempts."
+              # --- DEBUG: Explicitly show the final, edited content before extraction ---
+              echo "::debug::FINAL EDITED COMMENT CONTENT:"
+              echo "$FULL_COMMENT"
               break # Exit the loop
             fi
             
             if [[ $i -eq $MAX_ATTEMPTS ]]; then
-              echo "Timeout: Final Summary not found after 10 minutes."
+              echo "Timeout: Bot edit not found after 10 minutes."
               break
             fi
             
             sleep $SLEEP_TIME
           done
+
+          echo "--- DEBUG END: Starting Extraction ---"
 
           # 2. Extract the concise summary using SED
           if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
@@ -111,6 +122,7 @@ jobs:
           echo "summary<<EOF" >> $GITHUB_OUTPUT
           echo "$SUMMARY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
+      
       # 4. Send Consolidated Telegram Notification
       - name: Send Consolidated Telegram Message
         uses: appleboy/telegram-action@master # A reliable marketplace action
