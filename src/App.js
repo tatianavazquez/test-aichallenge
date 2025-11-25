@@ -1,6 +1,14 @@
 import logo from './logo.svg';
 import './App.css';
 
+/**
+ * Renders the application's root UI containing the header, logo, content blocks, and footer.
+ *
+ * The header includes the imported logo image, a short text ("revi"), an example content block,
+ * an additional paragraph ("Hola"), and a footer with footer text.
+ *
+ * @returns {JSX.Element} The root JSX element for the App component.
+ */
 function App() {
   return (
     <div className="App">
