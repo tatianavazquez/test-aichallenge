@@ -52,65 +52,77 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          AI_BOT_USERNAME="coderabbitai" 
+         run: |
+          # --- SAFELY DEFINED VARIABLES ---
+          AI_BOT_USERNAME="coderabbitai[bot]" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          MAX_ATTEMPTS=60 # Poll for up to 10 minutes
+          MAX_ATTEMPTS=60
           SLEEP_TIME=10
-          
           FULL_COMMENT=""
-          
+
+          echo "--- DEBUG START ---"
+          echo "Username being sought: $AI_BOT_USERNAME"
+          echo "PR Number: $PULL_REQUEST_NUMBER"
+          echo "-------------------"
+
           # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
             echo "Attempt $i/$MAX_ATTEMPTS: Checking for final content..."
             
             set -o pipefail
             
-            # Fetch the body safely 
-            FULL_COMMENT=$(gh pr view $PULL_REQUEST_NUMBER --json comments 2>/dev/null \
-              | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null \
-              | head -n 1)
+            # --- DEBUG: FETCH ALL COMMENTS FOR THE BOT ---
+            RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
+            
+            # Use JQ to find and print ALL comments made by the specific bot
+            BOT_COMMENTS=$(echo "$RAW_JSON_OUTPUT" | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body')
+            
+            echo "::debug::Total comments found from $AI_BOT_USERNAME (in all attempts):"
+            echo "$BOT_COMMENTS"
+
+            # Fetch the body of the latest comment
+            FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null | head -n 1)
               
             set +o pipefail
 
-            # --- DEBUG LINE ADDED HERE ---
-            echo "::debug::Content fetched in attempt $i:"
+            # --- DEBUG: PRINT THE LATEST COMMENT CONTENT ---
+            echo "::debug::LATEST comment content being evaluated:"
             echo "$FULL_COMMENT"
-            # -----------------------------
+            echo "-------------------"
 
             # Crucial check: Has CodeRabbit finished and posted the summary?
             if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
-              echo "Final CodeRabbit Summary found after $i attempts."
+              echo "SUCCESS: Final CodeRabbit Summary found after $i attempts."
               break # Exit the loop
             fi
             
             if [[ $i -eq $MAX_ATTEMPTS ]]; then
-              echo "Timeout: Final CodeRabbit comment content not found after 3 minutes."
+              echo "Timeout: Final CodeRabbit comment content not found after 10 minutes."
               break
             fi
             
             sleep $SLEEP_TIME
           done
 
-          # ... (Polling Loop remains the same, assuming it successfully fetches the final FULL_COMMENT)
-          
+          echo "--- DEBUG END: Starting Extraction ---"
+
           # 2. Extract the concise summary
-             if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
+          if echo "$FULL_COMMENT" | grep -q "## 🐇 Summary"; then
             # AWK extraction logic remains the same (isolates the short summary)
             SUMMARY=$(echo "$FULL_COMMENT" | awk '
-              # Start printing after the "Summary" header is found
               /## 🐇 Summary/{print; summary=1; next}
-              # Stop printing when the horizontal rule (---) is found
-              /---/{summary=0; next}
-              # Print lines only when the flag is set
+              /## 🔍 Detailed Code Review/ || /---/{summary=0; next}
               summary==1{print}
             ' | sed 's/## 🐇 Summary//g' | sed '/^$/d')
 
             if [[ -z "$SUMMARY" ]]; then
-              SUMMARY="[Concise summary extraction failed, but full review is on the PR. Check the AWK script against the PR comment source.]"
+              SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
             fi
-          # ... (rest of the script)
+          else
+            SUMMARY="[AI Review not complete within timeout. Check the PR on GitHub.]"
+          fi
 
-          # 3. Prepare multi-line output for the Telegram action
+          # 3. Prepare multi-line output
           echo "summary<<EOF" >> $GITHUB_OUTPUT
           echo "$SUMMARY" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
