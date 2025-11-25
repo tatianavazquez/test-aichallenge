@@ -2,13 +2,13 @@
   text-align: center;
 }
 
-.App-logo {
+.App-logoooo {
   height: 40vmin;
   pointer-events: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  .App-logo {
+  .App-logoooo{
     animation: App-logo-spin infinite 20s linear;
   }
 }
@@ -26,6 +26,15 @@
 
 .App-link {
   color: #61dafb;
+}
+
+.App-footer {
+  background-color: #282c34;
+  padding: 1rem;
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  text-align: center;
 }
 
 @keyframes App-logo-spin {
