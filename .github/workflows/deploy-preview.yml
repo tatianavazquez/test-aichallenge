@@ -1,17 +1,23 @@
-name: Deploy Preview
+name: Deploy Preview & Review Notification
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
 jobs:
-  deploy-preview:
+  deploy-and-notify:
     runs-on: ubuntu-latest
     
+    # Give this job permissions to read comments, which is needed for the 'Get AI Summary' step
+    permissions:
+      pull-requests: read
+      contents: read
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # --- EXISTING VERCEL STEPS ---
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -32,11 +38,51 @@ jobs:
           working-directory: .
           vercel-args: '--prod=false'
         id: deploy
+      # --- END EXISTING VERCEL STEPS ---
+      
+      # --- NEW AI & TELEGRAM STEPS ---
+      
+      # 1. Wait for AI Review Completion (Crucial for timing!)
+      # The AI App runs asynchronously. We pause to let it post its review comment.
+      - name: Wait for AI Review to Post
+        run: |
+          echo "Waiting 45 seconds for AI Review to complete and post its comment..."
+          sleep 45s # Adjust this time if needed, but 45s is a safe starting point
 
-      - name: Comment PR with preview link
-        uses: marocchino/sticky-pull-request-comment@v2
+      # 2. Install GitHub CLI and Extract AI Summary from PR Comments
+      # We use the GitHub CLI tool to read the comment the AI bot just posted.
+      - name: Get AI Summary from PR Comment
+        id: get_summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Use GitHub CLI to fetch the latest PR comment from the AI bot
+          # **IMPORTANT: CHANGE 'coderabbitai' TO THE ACTUAL BOT'S USERNAME IF DIFFERENT**
+          AI_BOT_USERNAME="coderabbitai" 
+          SUMMARY=$(gh pr view ${{ github.event.pull_request.number }} --json comments \
+            | jq -r '.comments[] | select(.author.login == "coderabbitai") | .body' \
+            | head -n 1) # Grabs the most recent summary text
+          
+          # Pass the summary text to the next step
+          SUMMARY_ESCAPED=$(echo "$SUMMARY" | sed 's/"/\\"/g' | tr '\n' ' ')
+          echo "summary=$SUMMARY_ESCAPED" >> $GITHUB_OUTPUT
+
+      # 3. Send Consolidated Telegram Notification
+      - name: Send Consolidated Telegram Message
+        uses: appleboy/telegram-action@master # A reliable marketplace action
         with:
-          header: vercel_preview
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            🚀 **Preview deployment ready!**
-            👉 ${{ steps.deploy.outputs.preview-url }}
+            🔔 *New PR for Review: ${{ github.event.pull_request.title }}*
+            
+            **By:** @${{ github.event.pull_request.user.login }}
+            
+            🚀 *Live Preview:* [Click to Test](${{ steps.deploy.outputs.preview-url }})
+            
+            🤖 *AI Code Review Summary:*
+            ${{ steps.get_summary.outputs.summary }}
+            
+            [Link to GitHub PR](${{ github.event.pull_request.html_url }})
+          parse_mode: markdown
+          disable_web_page_preview: true # Keeps the message clean
