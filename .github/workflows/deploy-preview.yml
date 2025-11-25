@@ -51,21 +51,40 @@ jobs:
 
       # 2. Install GitHub CLI and Extract AI Summary from PR Comments
       # We use the GitHub CLI tool to read the comment the AI bot just posted.
+     # 2. Get AI Summary from PR Comment (Extracts CONCISE Telegram Summary)
       - name: Get AI Summary from PR Comment
         id: get_summary
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Use GitHub CLI to fetch the latest PR comment from the AI bot
-          # **IMPORTANT: CHANGE 'coderabbitai' TO THE ACTUAL BOT'S USERNAME IF DIFFERENT**
+          # **IMPORTANT: Make sure AI_BOT_USERNAME matches the bot's username**
           AI_BOT_USERNAME="coderabbitai" 
-          SUMMARY=$(gh pr view ${{ github.event.pull_request.number }} --json comments \
-            | jq -r '.comments[] | select(.author.login == "coderabbitai") | .body' \
-            | head -n 1) # Grabs the most recent summary text
           
-          # Pass the summary text to the next step
-          SUMMARY_ESCAPED=$(echo "$SUMMARY" | sed 's/"/\\"/g' | tr '\n' ' ')
-          echo "summary=$SUMMARY_ESCAPED" >> $GITHUB_OUTPUT
+          # 1. Fetch the full body of the latest comment from the AI bot
+          FULL_COMMENT=$(gh pr view ${{ github.event.pull_request.number }} --json comments \
+            | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' \
+            | head -n 1)
+
+          # 2. Use AWK to extract content between the 'Summary' and 'Detailed Code Review' sections
+          # This assumes CodeRabbit uses headers like "## Summary" and "## Detailed Code Review".
+          # We also strip the auto-generated comment line.
+          SUMMARY=$(echo "$FULL_COMMENT" | awk '
+            # Flag to know if we are inside the summary block
+            /## 🐇 Summary/{print; summary=1; next}
+            # Stop when we hit the detailed section or a horizontal rule
+            /## 🔍 Detailed Code Review/ || /---/{summary=0; next}
+            # Print lines only if we are in the summary block
+            summary==1{print}
+          ' | sed 's/## 🐇 Summary//g' | sed '/^$/d') # Clean up the header and empty lines
+
+          # 3. Prepare multi-line output for the Telegram action
+          if [[ -z "$SUMMARY" ]]; then
+            SUMMARY="[Could not extract concise AI Summary. See the PR for the full review.]"
+          fi
+
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       # 3. Send Consolidated Telegram Notification
       - name: Send Consolidated Telegram Message
