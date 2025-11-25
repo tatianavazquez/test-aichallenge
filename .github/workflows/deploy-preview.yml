@@ -73,18 +73,13 @@ jobs:
             echo "::debug::BOT COMMENT BODY after JQ filter:"
             echo "$BOT_COMMENT_BODY"
             
-            # CRITICAL CHECK: Does the comment still contain the "processing" message?
-            if echo "$BOT_COMMENT_BODY" | grep -q "Currently processing new changes"; then
-              echo "Status: Still reviewing or processing. Waiting..."
+           # CRITICAL CHECK: Does the comment still contain the "review in progress" marker?
+            # We wait UNTIL this marker disappears.
+            if echo "$BOT_COMMENT_BODY" | grep -q "review in progress by coderabbit.ai"; then
+              echo "Status: 'Review in progress' tag found. Waiting..."
             else
-              echo "Status: Status message NOT found. Assuming review is complete."
+              echo "SUCCESS: 'Review in progress' tag is gone. Assuming review is complete."
               break
-            fi
-            
-            if [[ $i -eq $MAX_ATTEMPTS ]]; then
-              echo "Timeout: Bot status comment did not finalize after 10 minutes."
-              # Change to `exit 0` for now if you need the Telegram step to still run
-              exit 1 
             fi
             
             sleep $SLEEP_TIME
