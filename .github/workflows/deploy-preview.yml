@@ -41,31 +41,39 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          # Recommended bot name is coderabbitai for robustness
-          AI_BOT_USERNAME="coderabbitai"
+          # Use the format that matches your organization/repo setting
+          AI_BOT_USERNAME="coderabbitai" 
           MAX_ATTEMPTS=60
           SLEEP_TIME=10
           
           echo "--- STAGE 1: POLLING BOT STATUS COMMENT ---"
+          echo "Targeting Bot Username: $AI_BOT_USERNAME"
 
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
             echo "Attempt $i/$MAX_ATTEMPTS: Checking bot status comment..."
             
             set -o pipefail
             
-            # Fetch the body of the LATEST comment made by the bot
-            BOT_COMMENT_BODY=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null \
+            # Fetch the raw JSON output containing all comments
+            RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
+
+            # --- CRITICAL DEBUG: Print the raw JSON output ---
+            echo "::debug::RAW JSON OUTPUT at attempt $i:"
+            echo "$RAW_JSON_OUTPUT"
+            
+            # CRITICAL FIX: Simplify JQ to just filter and extract, avoiding complex piping issues.
+            # We use a single, reliable JQ script to find the latest comment body from the bot.
+            BOT_COMMENT_BODY=$(echo "$RAW_JSON_OUTPUT" \
               | jq -r '.comments[] | select(.author.login == "'"$AI_BOT_USERNAME"'") | .body' 2>/dev/null \
               | head -n 1)
               
             set +o pipefail
             
-            # --- CRITICAL DEBUG: Show the RAW HTML/Markdown content ---
-            echo "::debug::RAW BOT COMMENT BODY at attempt $i:"
+            # --- DEBUG: Show the RAW HTML/Markdown content ---
+            echo "::debug::BOT COMMENT BODY after JQ filter:"
             echo "$BOT_COMMENT_BODY"
             
-            # CRITICAL: We rely on the log to confirm the exact processing phrase.
-            # We use 'Currently processing new changes' for the check now.
+            # CRITICAL CHECK: Does the comment still contain the "processing" message?
             if echo "$BOT_COMMENT_BODY" | grep -q "Currently processing new changes"; then
               echo "Status: Still reviewing or processing. Waiting..."
             else
@@ -75,7 +83,8 @@ jobs:
             
             if [[ $i -eq $MAX_ATTEMPTS ]]; then
               echo "Timeout: Bot status comment did not finalize after 10 minutes."
-              exit 1
+              # Change to `exit 0` for now if you need the Telegram step to still run
+              exit 1 
             fi
             
             sleep $SLEEP_TIME
