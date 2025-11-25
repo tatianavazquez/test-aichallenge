@@ -53,59 +53,57 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # --- SAFELY DEFINED VARIABLES ---
-          AI_BOT_USERNAME="${{ github.event.pull_request.user.login }}" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
-          MAX_ATTEMPTS=60
+          MAX_ATTEMPTS=60 # 10 minutes max wait
           SLEEP_TIME=10
-          FULL_COMMENT=""
+          FULL_BODY=""
 
-          echo "--- DEBUG START: TARGETING FIRST COMMENT BY AUTHOR ---"
-          echo "Targeting PR Author: $AI_BOT_USERNAME"
+          echo "--- DEBUG START: TARGETING PR BODY (Description) ---"
+          echo "PR Number: $PULL_REQUEST_NUMBER"
           echo "-----------------------------------------------------"
-          
-          # We skip the "INITIAL_COMMENT_BODY" check because it relies on the same logic that is failing.
-          # We proceed directly to the loop with the fix.
-          
+
+          # --- DEBUG BEFORE LOOP: CHECK INITIAL STATE (Unedited) ---
+          # Fetch the PR body content once to establish the baseline.
+          RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
+          INITIAL_BODY=$(echo "$RAW_BODY_OUTPUT" | jq -r '.body')
+
+          echo "::debug::INITIAL PR DESCRIPTION STATE (Before Polling Starts):"
+          echo "$INITIAL_BODY"
+          echo "------------------------------------------------------"
+          # --------------------------------------------------------
+
           # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
-            echo "Attempt $i/$MAX_ATTEMPTS: Checking for bot edit..."
+            echo "Attempt $i/$MAX_ATTEMPTS: Checking PR body for bot edit..."
             
             set -o pipefail
             
-            # Fetch the raw JSON output containing all comments
-            RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
-            
-            # CRITICAL FIX: Use a robust JQ query to filter for the first comment by the author.
-            # This query ensures the filtering happens correctly:
-            FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" \
-              | jq -r '[.comments[] 
-                  | select(.author.login == "'"$AI_BOT_USERNAME"'")] 
-                  | sort_by(.createdAt) 
-                  | .[0].body' 2>/dev/null)
+            # Fetch the PR body content using the --json body flag (re-fetch for update)
+            RAW_BODY_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json body 2>/dev/null)
+            FULL_BODY=$(echo "$RAW_BODY_OUTPUT" | jq -r '.body')
               
             set +o pipefail
 
             # --- DEBUG: Show the current state during polling ---
-            echo "::debug::CURRENT COMMENT STATE AT ATTEMPT $i (Expecting edit):"
-            # Print a placeholder if the content is empty, to confirm the script ran.
-            if [[ -z "$FULL_COMMENT" ]]; then
-              echo "[Content empty: Author may not have posted the initial comment yet, or JQ failed.]"
+            echo "::debug::CURRENT PR BODY CONTENT AT ATTEMPT $i (Tracking edit):"
+            if [[ "$FULL_BODY" == "null" || -z "$FULL_BODY" ]]; then
+              echo "[Content empty/null: PR body is empty or fetch failed.]"
             else
-              echo "$FULL_COMMENT"
+              echo "$FULL_BODY"
             fi
             echo "------------------------------------------------"
 
-            # Crucial check: Has the bot finished updating the comment with the Summary?
-            if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
-              echo "SUCCESS: Bot edit found, proceeding to extraction after $i attempts."
-              # FINAL DEBUG: Explicitly show the final, edited content before extraction
-              echo "::debug::FINAL EDITED COMMENT CONTENT:"
-              echo "$FULL_COMMENT"
+            # Crucial check: Has the bot finished updating the body with the Summary?
+            if echo "$FULL_BODY" | grep -q "Summary by CodeRabbit"; then
+              echo "SUCCESS: Bot edit found in PR body, proceeding to extraction after $i attempts."
+              # --- DEBUG: Explicitly show the final, edited content before extraction ---
+              echo "::debug::FINAL EDITED PR BODY CONTENT:"
+              echo "$FULL_BODY"
               break # Exit the loop
             fi
             
             if [[ $i -eq $MAX_ATTEMPTS ]]; then
-              echo "Timeout: Bot edit not found after 10 minutes."
+              echo "Timeout: Final Summary not found in PR body after 10 minutes."
               break
             fi
             
@@ -115,15 +113,16 @@ jobs:
           echo "--- DEBUG END: Starting Extraction ---"
 
           # 2. Extract the concise summary using SED
-          # ... (Extraction logic remains the same)
-          if echo "$FULL_COMMENT" | grep -q "Summary by CodeRabbit"; then
-            SUMMARY=$(echo "$FULL_COMMENT" | sed '1,/Summary by CodeRabbit/d')
+          if echo "$FULL_BODY" | grep -q "Summary by CodeRabbit"; then
+            # Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
+            SUMMARY=$(echo "$FULL_BODY" | sed '1,/Summary by CodeRabbit/d')
             
+            # Cleanup for safety
             if [[ -z "$SUMMARY" ]]; then
               SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
             fi
           else
-            SUMMARY="[AI Review not complete within timeout. Check the PR on GitHub.]"
+            SUMMARY="[AI Review not complete within timeout. Check the PR description on GitHub.]"
           fi
 
           # 3. Prepare multi-line output
