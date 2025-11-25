@@ -80,7 +80,7 @@ jobs:
             echo "------------------------------------------------"
             
             # CRITICAL FIX: Break only when 1) the final tag is present AND 2) the content has changed (new review).
-            if echo "$FULL_BODY" | grep -q ""; then
+            if echo "$FULL_BODY" | grep -q "<!-- end of auto-generated comment: release notes by coderabbit.ai-->"; then
                 if [[ "$CURRENT_SUMMARY_MARKER" != "$OLD_SUMMARY_MARKER" ]]; then
                     echo "SUCCESS: Final completion marker found AND content has changed. Review is complete after $i attempts."
                     echo "::debug::FINAL EDITED PR BODY CONTENT:"
@@ -101,13 +101,34 @@ jobs:
 
           echo "--- DEBUG END: Starting Extraction ---"
 
-          # 2. Extract the concise summary using SED
+          # 2. Extract and Clean the concise summary using AWK (Robust Multi-line Handling)
           if echo "$FULL_BODY" | grep -q "Summary by CodeRabbit"; then
-            # 1. Use sed to delete everything *before* "Summary by CodeRabbit" and keep the rest.
-            SUMMARY=$(echo "$FULL_BODY" | sed '1,/Summary by CodeRabbit/d')
+            SUMMARY=$(echo "$FULL_BODY" | awk '
+              # Flag to indicate when we are inside the summary block
+              /Summary by CodeRabbit/ {print; start=1; next}
+              start==1 {
+                # Skip the tip line
+                if ($0 ~ /<sub>/) { next }
+                # Skip the final closing HTML comment (Using the exact string we confirmed)
+                if ($0 ~ /<!-- end of auto-generated comment: release notes by coderabbit.ai-->/) { next }
+                print
+              }
+            ')
             
-            # 2. CLEANUP: Remove the promotional/tip lines and the end comment tag.
-            SUMMARY=$(echo "$SUMMARY" | sed '/<sub>/d' | sed '/
+            # Additional cleanup for leading/trailing whitespace and empty lines
+            SUMMARY=$(echo "$SUMMARY" | awk 'NF')
+
+            if [[ -z "$SUMMARY" ]]; then
+              SUMMARY="[Concise summary extraction failed, but full review is on the PR.]"
+            fi
+          else
+            SUMMARY="[AI Review not complete within timeout. Check the PR description on GitHub.]"
+          fi
+
+          # 3. Prepare multi-line output
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       
       # 4. Send Consolidated Telegram Notification
       - name: Send Consolidated Telegram Message
