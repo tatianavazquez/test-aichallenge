@@ -58,7 +58,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # **IMPORTANT: Make sure AI_BOT_USERNAME matches the bot's username**
-          AI_BOT_USERNAME="coderabbitai" 
+          AI_BOT_USERNAME="coderabbitai[bot]" 
           
           # 1. Fetch the full body of the latest comment from the AI bot
           FULL_COMMENT=$(gh pr view ${{ github.event.pull_request.number }} --json comments \
