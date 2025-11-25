@@ -15,9 +15,8 @@ function App() {
   const [query, setQuery] = useState("");
   const [sortField, setSortField] = useState(null);
   const [sortDir, setSortDir] = useState("asc");
-
-  // pagination
   const [page, setPage] = useState(1);
+
   const pageSize = 3;
 
   // Filter
@@ -37,7 +36,7 @@ function App() {
     return 0;
   });
 
-  // Pagination logic
+  // Pagination
   const totalPages = Math.ceil(sorted.length / pageSize);
   const start = (page - 1) * pageSize;
   const paginated = sorted.slice(start, start + pageSize);
@@ -54,8 +53,8 @@ function App() {
   const goToPage = (num) => setPage(num);
 
   return (
-    <div style={{ padding: 24, fontFamily: "sans-serif" }}>
-      <h1>Team Points</h1>
+    <div style={{ padding: 24, fontFamily: "Arial" }}>
+      <h1 style={{ marginBottom: 12 }}>Team Points</h1>
 
       {/* Search */}
       <input
@@ -68,17 +67,22 @@ function App() {
         }}
         style={{
           padding: 8,
-          border: "1px solid #ccc",
-          borderRadius: 4,
-          marginBottom: 14,
+          border: "1px solid #bbb",
+          borderRadius: 6,
+          marginBottom: 16,
           width: "100%",
           maxWidth: 300,
         }}
       />
 
       {/* Table */}
-      <table style={{ borderCollapse: "collapse", width: "100%", maxWidth: 600 }}>
-        <thead>
+      <table style={{
+        borderCollapse: "collapse",
+        width: "100%",
+        maxWidth: 600,
+        boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+      }}>
+        <thead style={{ background: "#e8f0ff" }}>
           <tr>
             {["id", "name", "role", "points"].map((field) => (
               <th key={field} style={th} onClick={() => handleSort(field)}>
@@ -91,7 +95,7 @@ function App() {
 
         <tbody>
           {paginated.map((person) => (
-            <tr key={person.id}>
+            <tr key={person.id} style={row}>
               <td style={td}>{person.id}</td>
               <td style={td}>{person.name}</td>
               <td style={td}>{person.role}</td>
@@ -102,15 +106,16 @@ function App() {
       </table>
 
       {/* Pagination Numbers */}
-      <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+      <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
           <button
             key={num}
             onClick={() => goToPage(num)}
             style={{
               ...btn,
-              background: num === page ? "#d0e3ff" : "#f5f5f5",
-              fontWeight: num === page ? "bold" : "normal",
+              background: num === page ? "#c9dbff" : "#f0f0f0",
+              fontWeight: num === page ? "bold" : "",
+              borderColor: num === page ? "#5b82ff" : "#aaa",
             }}
           >
             {num}
@@ -122,22 +127,28 @@ function App() {
 }
 
 const th = {
-  borderBottom: "2px solid #000",
+  padding: "10px 6px",
+  borderBottom: "2px solid #6a8aff",
   textAlign: "left",
-  padding: "8px 4px",
   cursor: "pointer",
   userSelect: "none",
 };
 
 const td = {
-  borderBottom: "1px solid #ccc",
-  padding: "8px 4px",
+  padding: "10px 6px",
+  borderBottom: "1px solid #ddd",
+};
+
+const row = {
+  transition: "background 0.2s",
+  cursor: "default",
+  hover: "background:red"
 };
 
 const btn = {
   padding: "6px 12px",
+  borderRadius: 6,
   border: "1px solid #aaa",
-  borderRadius: 4,
   cursor: "pointer",
 };
 
