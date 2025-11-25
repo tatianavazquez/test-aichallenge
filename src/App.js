@@ -19,44 +19,30 @@ function App() {
 
   const pageSize = 3;
 
-  // Filter
   const filtered = initialData.filter((item) =>
-    Object.values(item).some((val) =>
-      String(val).toLowerCase().includes(query.toLowerCase())
+    Object.values(item).some((v) =>
+      String(v).toLowerCase().includes(query.toLowerCase())
     )
   );
 
-  // Sort
   const sorted = [...filtered].sort((a, b) => {
     if (!sortField) return 0;
-    const valA = a[sortField];
-    const valB = b[sortField];
-    if (valA < valB) return sortDir === "asc" ? -1 : 1;
-    if (valA > valB) return sortDir === "asc" ? 1 : -1;
+    const A = a[sortField];
+    const B = b[sortField];
+    if (A < B) return sortDir === "asc" ? -1 : 1;
+    if (A > B) return sortDir === "asc" ? 1 : -1;
     return 0;
   });
 
-  // Pagination
   const totalPages = Math.ceil(sorted.length / pageSize);
-  const start = (page - 1) * pageSize;
-  const paginated = sorted.slice(start, start + pageSize);
+  const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
 
-  const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  };
-
-  const goToPage = (num) => setPage(num);
+  const goToPage = (n) => setPage(n);
 
   return (
-    <div style={{ padding: 24, fontFamily: "Arial" }}>
+    <div style={{ padding: 24, fontFamily: "Arial", maxWidth: 600 }}>
       <h1 style={{ marginBottom: 12 }}>Team Points</h1>
 
-      {/* Search */}
       <input
         type="text"
         placeholder="Search..."
@@ -71,41 +57,55 @@ function App() {
           borderRadius: 6,
           marginBottom: 16,
           width: "100%",
-          maxWidth: 300,
         }}
       />
 
-      {/* Table */}
-      <table style={{
-        borderCollapse: "collapse",
-        width: "100%",
-        maxWidth: 600,
-        boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-      }}>
-        <thead style={{ background: "#e8f0ff" }}>
-          <tr>
-            {["id", "name", "role", "points"].map((field) => (
-              <th key={field} style={th} onClick={() => handleSort(field)}>
-                {field.toUpperCase()}
-                {sortField === field ? (sortDir === "asc" ? " 🔼" : " 🔽") : ""}
-              </th>
-            ))}
-          </tr>
-        </thead>
-
-        <tbody>
-          {paginated.map((person) => (
-            <tr key={person.id} style={row}>
-              <td style={td}>{person.id}</td>
-              <td style={td}>{person.name}</td>
-              <td style={td}>{person.role}</td>
-              <td style={td}>{person.points}</td>
+      <div style={{ maxHeight: 250, overflowY: "auto" }}>
+        <table
+          style={{
+            borderCollapse: "collapse",
+            width: "100%",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
+          }}
+        >
+          <thead style={{ background: "#e8f0ff" }}>
+            <tr>
+              {["id", "name", "role", "points"].map((field) => (
+                <th
+                  key={field}
+                  style={th}
+                  onClick={() =>
+                    setSortField((prev) => {
+                      if (prev === field) {
+                        setSortDir(sortDir === "asc" ? "desc" : "asc");
+                        return field;
+                      }
+                      setSortDir("asc");
+                      return field;
+                    })
+                  }
+                >
+                  {field.toUpperCase()}
+                  {sortField === field ? (sortDir === "asc" ? " 🔼" : " 🔽") : ""}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
 
-      {/* Pagination Numbers */}
+          <tbody>
+            {paginated.map((p) => (
+              <tr key={p.id} style={row}>
+                <td style={td}>{p.id}</td>
+                <td style={td}>{p.name}</td>
+                <td style={td}>{p.role}</td>
+                <td style={td}>{p.points}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
       <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
           <button
@@ -126,12 +126,18 @@ function App() {
   );
 }
 
+// STICKY HEADER MAGIC 💅
 const th = {
   padding: "10px 6px",
   borderBottom: "2px solid #6a8aff",
   textAlign: "left",
   cursor: "pointer",
   userSelect: "none",
+
+  position: "sticky",
+  top: 0,
+  zIndex: 10,
+  background: "#e8f0ff",
 };
 
 const td = {
@@ -141,8 +147,6 @@ const td = {
 
 const row = {
   transition: "background 0.2s",
-  cursor: "default",
-  hover: "background:red"
 };
 
 const btn = {
