@@ -53,7 +53,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # --- SAFELY DEFINED VARIABLES ---
-          AI_BOT_USERNAME="coderabbitai[bot]" 
+          AI_BOT_USERNAME="coderabbitai" 
           PULL_REQUEST_NUMBER=${{ github.event.pull_request.number }}
           MAX_ATTEMPTS=60
           SLEEP_TIME=10
