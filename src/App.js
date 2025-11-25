@@ -9,7 +9,7 @@ function App() {
         <p>
           AVISAAAA ??
         </p>
-     <p style={{ color: "red", fontWeight: "bold" }}>trying</p>
+     <p style={{ color: "red", fontWeight: "bold", fontSize: "16px" }}>trying</p>
       </header>
     </div>
   );
