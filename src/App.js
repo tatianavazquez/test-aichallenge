@@ -1,16 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 function App() {
-  const initialData = [
-    { id: 1, name: "Alice", role: "Developer", points: 92 },
-    { id: 2, name: "Bob", role: "Designer", points: 81 },
-    { id: 3, name: "Charlie", role: "QA", points: 76 },
-    { id: 4, name: "Diana", role: "Manager", points: 88 },
-    { id: 5, name: "Eve", role: "DevOps", points: 90 },
-    { id: 6, name: "Frank", role: "Intern", points: 60 },
-    { id: 7, name: "Gina", role: "PM", points: 84 },
-    { id: 8, name: "Henry", role: "Tech Lead", points: 95 }
-  ];
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [query, setQuery] = useState("");
   const [sortField, setSortField] = useState(null);
@@ -19,12 +11,26 @@ function App() {
 
   const pageSize = 3;
 
-  const filtered = initialData.filter((item) =>
-    Object.values(item).some((v) =>
-      String(v).toLowerCase().includes(query.toLowerCase())
+  // Fetch from dummy API 🎣
+  useEffect(() => {
+    fetch("https://jsonplaceholder.typicode.com/users")
+      .then((res) => res.json())
+      .then((json) => {
+        setData(json);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) return <p style={{ padding: 20 }}>Loading API data… 😘</p>;
+
+  // Filter
+  const filtered = data.filter((item) =>
+    Object.values(item).some((val) =>
+      String(val).toLowerCase().includes(query.toLowerCase())
     )
   );
 
+  // Sort
   const sorted = [...filtered].sort((a, b) => {
     if (!sortField) return 0;
     const A = a[sortField];
@@ -34,6 +40,7 @@ function App() {
     return 0;
   });
 
+  // Pagination
   const totalPages = Math.ceil(sorted.length / pageSize);
   const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
 
@@ -41,11 +48,12 @@ function App() {
 
   return (
     <div style={{ padding: 24, fontFamily: "Arial", maxWidth: 600 }}>
-      <h1 style={{ marginBottom: 12 }}>Team Points</h1>
+      <h1>User List (API)</h1>
 
+      {/* Search */}
       <input
         type="text"
-        placeholder="Search..."
+        placeholder="Search…"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -70,7 +78,12 @@ function App() {
         >
           <thead style={{ background: "#e8f0ff" }}>
             <tr>
-              {["id", "name", "role", "points"].map((field) => (
+              {[
+                ["id", "ID"],
+                ["name", "Name"],
+                ["email", "Email"],
+                ["username", "Username"],
+              ].map(([field, label]) => (
                 <th
                   key={field}
                   style={th}
@@ -85,7 +98,7 @@ function App() {
                     })
                   }
                 >
-                  {field.toUpperCase()}
+                  {label}
                   {sortField === field ? (sortDir === "asc" ? " 🔼" : " 🔽") : ""}
                 </th>
               ))}
@@ -93,12 +106,12 @@ function App() {
           </thead>
 
           <tbody>
-            {paginated.map((p) => (
-              <tr key={p.id} style={row}>
-                <td style={td}>{p.id}</td>
-                <td style={td}>{p.name}</td>
-                <td style={td}>{p.role}</td>
-                <td style={td}>{p.points}</td>
+            {paginated.map((user) => (
+              <tr key={user.id} style={row}>
+                <td style={td}>{user.id}</td>
+                <td style={td}>{user.name}</td>
+                <td style={td}>{user.email}</td>
+                <td style={td}>{user.username}</td>
               </tr>
             ))}
           </tbody>
@@ -126,7 +139,6 @@ function App() {
   );
 }
 
-// STICKY HEADER MAGIC 💅
 const th = {
   padding: "10px 6px",
   borderBottom: "2px solid #6a8aff",
