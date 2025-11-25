@@ -62,6 +62,20 @@ jobs:
           echo "--- DEBUG START: TARGETING FIRST COMMENT BY AUTHOR ---"
           echo "Targeting PR Author: $AI_BOT_USERNAME"
           echo "-----------------------------------------------------"
+          
+          # --- DEBUG BEFORE LOOP: CHECK INITIAL STATE (Unedited) ---
+          # Run the fetch command once to see the comment's initial state
+          RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
+          INITIAL_COMMENT_BODY=$(echo "$RAW_JSON_OUTPUT" \
+            | jq -r '.comments[] 
+                | select(.author.login == "'"$AI_BOT_USERNAME"'") 
+                | sort_by(.createdAt) 
+                | .[0].body' 2>/dev/null)
+
+          echo "::debug::INITIAL COMMENT STATE (Before Polling Starts):"
+          echo "$INITIAL_COMMENT_BODY"
+          echo "------------------------------------------------------"
+          # --------------------------------------------------------
 
           # Start the Polling Loop
           for ((i=1; i<=$MAX_ATTEMPTS; i++)); do
@@ -69,10 +83,10 @@ jobs:
             
             set -o pipefail
             
-            # Fetch the raw JSON output containing all comments
+            # Fetch the raw JSON output containing all comments (re-fetch to get latest API data)
             RAW_JSON_OUTPUT=$(gh pr view "$PULL_REQUEST_NUMBER" --json comments 2>/dev/null)
             
-            # CRITICAL: Use JQ to filter by author, sort by 'createdAt', and take the body of the FIRST comment.
+            # CRITICAL: Fetch the body of the FIRST comment by the author
             FULL_COMMENT=$(echo "$RAW_JSON_OUTPUT" \
               | jq -r '.comments[] 
                   | select(.author.login == "'"$AI_BOT_USERNAME"'") 
@@ -81,8 +95,9 @@ jobs:
               
             set +o pipefail
 
-            # --- DEBUG: Show the current state of the first comment ---
-            echo "::debug::FIRST COMMENT CONTENT AT ATTEMPT $i:"
+            # --- DEBUG: Show the current state during polling ---
+            # When the bot edits it, this is what changes
+            echo "::debug::CURRENT COMMENT STATE AT ATTEMPT $i (Expecting edit):"
             echo "$FULL_COMMENT"
             echo "------------------------------------------------"
 
