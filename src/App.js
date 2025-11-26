@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import "./App.css";
 
 function App() {
   const [data, setData] = useState([]);
@@ -11,7 +12,7 @@ function App() {
 
   const pageSize = 3;
 
-  // Fetch from dummy API 🎣
+  // Fetch API
   useEffect(() => {
     fetch("https://jsonplaceholder.typicode.com/users")
       .then((res) => res.json())
@@ -21,7 +22,7 @@ function App() {
       });
   }, []);
 
-  if (loading) return <p style={{ padding: 20 }}>Loading API data… 😘</p>;
+  if (loading) return <p className="loading">Loading API data… 😘</p>;
 
   // Filter
   const filtered = data.filter((item) =>
@@ -44,39 +45,26 @@ function App() {
   const totalPages = Math.ceil(sorted.length / pageSize);
   const paginated = sorted.slice((page - 1) * pageSize, page * pageSize);
 
-  const goToPage = (n) => setPage(n);
+  const goToPage = (num) => setPage(num);
 
   return (
-    <div style={{ padding: 24, fontFamily: "Arial", maxWidth: 600 }}>
+    <div className="container">
       <h1>User List (API)</h1>
 
-      {/* Search */}
       <input
         type="text"
         placeholder="Search…"
+        className="search-input"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);
           setPage(1);
         }}
-        style={{
-          padding: 8,
-          border: "1px solid #bbb",
-          borderRadius: 6,
-          marginBottom: 16,
-          width: "100%",
-        }}
       />
 
-      <div style={{ maxHeight: 250, overflowY: "auto" }}>
-        <table
-          style={{
-            borderCollapse: "collapse",
-            width: "100%",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.1)",
-          }}
-        >
-          <thead style={{ background: "#e8f0ff" }}>
+      <div className="table-wrapper">
+        <table className="styled-table">
+          <thead>
             <tr>
               {[
                 ["id", "ID"],
@@ -86,7 +74,6 @@ function App() {
               ].map(([field, label]) => (
                 <th
                   key={field}
-                  style={th}
                   onClick={() =>
                     setSortField((prev) => {
                       if (prev === field) {
@@ -107,11 +94,11 @@ function App() {
 
           <tbody>
             {paginated.map((user) => (
-              <tr key={user.id} style={row}>
-                <td style={td}>{user.id}</td>
-                <td style={td}>{user.name}</td>
-                <td style={td}>{user.email}</td>
-                <td style={td}>{user.username}</td>
+              <tr key={user.id}>
+                <td>{user.id}</td>
+                <td>{user.name}</td>
+                <td>{user.email}</td>
+                <td>{user.username}</td>
               </tr>
             ))}
           </tbody>
@@ -119,17 +106,12 @@ function App() {
       </div>
 
       {/* Pagination */}
-      <div style={{ marginTop: 18, display: "flex", gap: 8 }}>
+      <div className="pagination">
         {Array.from({ length: totalPages }, (_, i) => i + 1).map((num) => (
           <button
             key={num}
             onClick={() => goToPage(num)}
-            style={{
-              ...btn,
-              background: num === page ? "#c9dbff" : "#f0f0f0",
-              fontWeight: num === page ? "bold" : "",
-              borderColor: num === page ? "#5b82ff" : "#aaa",
-            }}
+            className={`page-btn ${num === page ? "active" : ""}`}
           >
             {num}
           </button>
@@ -138,34 +120,5 @@ function App() {
     </div>
   );
 }
-
-const th = {
-  padding: "10px 6px",
-  borderBottom: "2px solid #6a8aff",
-  textAlign: "left",
-  cursor: "pointer",
-  userSelect: "none",
-
-  position: "sticky",
-  top: 0,
-  zIndex: 10,
-  background: "#e8f0ff",
-};
-
-const td = {
-  padding: "10px 6px",
-  borderBottom: "1px solid #ddd",
-};
-
-const row = {
-  transition: "background 0.2s",
-};
-
-const btn = {
-  padding: "6px 12px",
-  borderRadius: 6,
-  border: "1px solid #aaa",
-  cursor: "pointer",
-};
 
 export default App;

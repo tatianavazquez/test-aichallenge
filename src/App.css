@@ -2,37 +2,85 @@
   text-align: center;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+/* General layout */
+.container {
+  padding: 24px;
+  font-family: Arial;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.loading {
+  padding: 20px;
+  font-size: 18px;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+/* Search input */
+.search-input {
+  padding: 8px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+/* Table wrapper for scrolling */
+.table-wrapper {
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+/* Table styling */
+.styled-table {
+  border-collapse: collapse;
+  width: 100%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+}
+
+.styled-table thead {
+  background: #e8f0ff;
+}
+
+.styled-table th {
+  padding: 10px 6px;
+  border-bottom: 2px solid #6a8aff;
+  text-align: left;
+  user-select: none;
+  cursor: pointer;
+
+  /* 🔥 Sticky header */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #e8f0ff;
+}
+
+.styled-table td {
+  padding: 10px 6px;
+  border-bottom: 1px solid #ddd;
+}
+
+.styled-table tr:hover td {
+  background: #f5f8ff;
+}
+
+/* Pagination */
+.pagination {
+  margin-top: 18px;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  gap: 8px;
 }
 
-.App-link {
-  color: #61dafb;
+.page-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #aaa;
+  background: #f0f0f0;
+  cursor: pointer;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.page-btn.active {
+  background: #c9dbff;
+  border-color: #5b82ff;
+  font-weight: bold;
 }
